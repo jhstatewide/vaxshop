@@ -197,12 +197,12 @@ class VaxShop < RubyPlugin
     # ok, now figure out MaxStackSize
     max_stack_size = is.getMaxStackSize()
     if max_stack_size == -1 || quantity <= max_stack_size
-      is = ItemStack.new(item_id, quantity.to_i, 0, data.to_i)
+      is = ItemStack.new(item_id.to_i, quantity.to_i, 0, data.to_i)
       is.amount = quantity
       player.getInventory.addItem(is)
     else
       (quantity / max_stack_size).times do |i|
-        is = ItemStack.new(item_id, quantity.to_i, 0, data.to_i)
+        is = ItemStack.new(item_id.to_i, quantity.to_i, 0, data.to_i)
         is.amount = max_stack_size
         player.getInventory.addItem(is)
       end

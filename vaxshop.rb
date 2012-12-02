@@ -1,3 +1,4 @@
+
 require 'java'
 require 'pstore'
 require 'pp'
@@ -21,10 +22,10 @@ Plugin.is {
   version "0.1"
   author "vaxgeek"
   commands :vs => {
-        :description => "Interact with VaxShop",
-        :usage => "/vs",
-        :aliases => [ :shop, :vaxshop ]
-    }
+    :description => "Interact with VaxShop",
+    :usage => "/vs",
+    :aliases => [ :shop, :vaxshop ]
+  }
 }
 class VaxShop < RubyPlugin
   def onEnable
@@ -44,18 +45,22 @@ class VaxShop < RubyPlugin
 
   def onCommand(sender, command, label, args)
     # puts "#{sender} said #{command} with label #{label} and #{args.to_a.inspect}"
-    begin    
+    begin
       if args.length == 0
         send(sender,"|gCommands: /vs buy,sell,price,help,list")
         return true
       end
-        
+
       if args[0].downcase == "sell"
-        
-        raise "You must say /vs sell ITEM COUNT PRICE" unless args.length == 4
-        
-        item = @LOOKUP.item_id(args[1].downcase)
-        item = args[1].to_i if item == nil
+
+        raise "You must say /vs sell ITEM|HAND COUNT PRICE" unless args.length == 4
+        if (args[1].downcase == "hand")
+          item = sender.getItemInHand()
+          item = item.getTypeId.to_s + "," + item.getData.getData.to_s
+        else
+          item = @LOOKUP.item_id(args[1].downcase)
+          item = args[1] if item == nil
+        end
         # puts "the item is: #{item.inspect}"
         count = args[2].to_i
         # new big decimal, 2 significant sigits...
@@ -65,30 +70,31 @@ class VaxShop < RubyPlugin
 
         # see if we have more than 1000 items...
         raise "Too much in stock already! Someone has to buy it first!" if @SHOP.count_items(item) > 1000
-        
+
         worst_price = @SHOP.worst_price(item)
         if worst_price
-        	raise "Your price is a ripoff! Price must be lower than #{sprintf("%0.2f", (worst_price * 5).to_f)}! " if price > worst_price * 5
+          raise "Your price is a ripoff! Price must be lower than #{sprintf("%0.2f", (worst_price * 5).to_f)}! " if price > worst_price * 5
         else
-                # prevent first item rip-off
-                raise "Your price is a ripoff! Price must be lower than #{@ECONOMY.getBalance(sender.getName)}" if price > @ECONOMY.getBalance(sender.getName)
+          # prevent first item rip-off
+          raise "Your price is a ripoff! Price must be lower than #{@ECONOMY.getBalance(sender.getName)}" if price > @ECONOMY.getBalance(sender.getName)
         end
-        
+
         if inventory_has?(sender, item, count)
           remove_from_inventory(sender, item, count)
           @SHOP.add(:count => count, :item_id => item, :player => sender.getName, :price => price)
         else
           raise "You don't have enough of that item to do that!"
         end
+        # puts "I'd want to lookup: #{item}"
         send(sender, "|gYou have sold #{count} #{@LOOKUP.name(item)} to the shop for #{sprintf("%.2f",price)} each!")
         broadcast("|g#{sender.getName} sold #{count} #{@LOOKUP.name(item)} to the shop for #{sprintf("%.2f",price)} each!")
-        
-        
+
+
       elsif args[0].downcase == "buy"
-        
+
         raise "You must say /vs buy ITEM COUNT" unless args.length == 3
         item_id = @LOOKUP.item_id(args[1].downcase)
-        item_id = args[1].to_i if item_id == nil
+        item_id = args[1] if item_id == nil
         count = args[2].to_i
         deal = @SHOP.best_deal(item_id)
         raise "You can't buy less than one!" if count < 1
@@ -111,24 +117,24 @@ class VaxShop < RubyPlugin
         end
         #send(sender,"|gYou just bought #{count} #{@LOOKUP.name(item_id)} from the shop for a total of #{sprintf("%.2f",price*count)}!")
         broadcast("|g#{sender.getName} just bought #{count} #{@LOOKUP.name(item_id)} from the shop for a total of #{sprintf("%.2f",price*count)}!")
-        
+
       elsif args[0].downcase == "help"
-        
-      	      send(sender,"|gCommands: /vs buy,sell,price,help,list,name") 
- 
+
+        send(sender,"|gCommands: /vs buy,sell,price,help,list,name")
+
 
       elsif args[0].downcase == "name"
-      	      raise "You must specify ID" unless args.length == 2
-      	      item_id = args[1].to_i
-      	      send(sender,"|gItem id: #{@LOOKUP.name(item_id)}")
-      	      
+        raise "You must specify ID" unless args.length == 2
+        item_id = args[1]
+        send(sender,"|gItem id: #{@LOOKUP.name(item_id)}")
+
       elsif args[0].downcase == "id"
-      	      raise "You must specify name" unless args.length == 2
-      	      name = args[1].downcase
-      	      send(sender,"|gItem id: #{@LOOKUP.item_id(name)}")
-      	      	      
+        raise "You must specify name" unless args.length == 2
+        name = args[1].downcase
+        send(sender,"|gItem id: #{@LOOKUP.item_id(name)}")
+
       elsif args[0].downcase == "list"
-        
+
         page = args.length == 2 ? args[1].to_i : 1
         send(sender, "|gPage #{page}:")
         chunk = 4
@@ -136,31 +142,31 @@ class VaxShop < RubyPlugin
         end_item = start_item + chunk
         contents = @SHOP.contents
         end_item = contents.length - 1 if end_item >= contents.length
-        
+
         # puts "Would slice from #{start_item} to #{chunk}"
         contents = contents[start_item .. end_item]
         raise "No items in shop!" if contents == nil or contents.length == 0
         if contents.length > 0
-        	# puts contents.inspect
-		contents.each do |data|
-			send(sender, "|w#{data[:player]} #{@LOOKUP.name(data[:item_id])} x #{data[:count]} for $#{sprintf("%.2f",data[:price])}")
-		end
-	end
-        
-        
+          # puts contents.inspect
+          contents.each do |data|
+            send(sender, "|w#{data[:player]} #{@LOOKUP.name(data[:item_id])} x #{data[:count]} for $#{sprintf("%.2f",data[:price])}")
+          end
+        end
+
+
       elsif args[0].downcase == "price"
-        
+
         raise "You must specify an item ID to get price for!" unless args.length == 2
         item_id = @LOOKUP.item_id(args[1].downcase)
-        item_id = args[1].to_i if item_id == nil
+        item_id = args[1] if item_id == nil
         raise "Shop doesn't have any #{@LOOKUP.name(item_id)}" unless @SHOP.has?(item_id)
         best_deal = @SHOP.best_deal(item_id)
         send(sender, "The best price I can get you is: #{best_deal[:count]} #{@LOOKUP.name(best_deal[:item_id])} #{sprintf("%.2f",best_deal[:price])} each from #{best_deal[:player]}")
-        
+
       else
-        
+
         raise "Unknown /vs command! See /vs help!"
-        
+
       end
     rescue => e
       send(sender, "|rERROR: " + e.message)
@@ -171,88 +177,98 @@ class VaxShop < RubyPlugin
   end
 
   private
-  
+
   def inventory_has?(player, id, quantity)
-    return player.getInventory.contains(id, quantity)
+    # gotta take care of metadata...
+    id, data = id.split(/\,/)
+    found = 0
+    player.getInventory.getContents.each do |is|
+      next if is == nil
+      if is.getTypeId.to_s == id && is.getData.getData.to_s == data
+        found += is.getAmount
+      end
+    end
+    return found >= quantity
   end
-  
+
   def add_to_inventory(player, item_id, quantity)
-    is = ItemStack.new(item_id)
-    # ok, now figure out MaxStackSize 
+    item_id, data = item_id.split(/\,/)
+    is = ItemStack.new(item_id.to_i, quantity.to_i, 0, data.to_i)
+    # ok, now figure out MaxStackSize
     max_stack_size = is.getMaxStackSize()
-    puts "The max stack size is: #{max_stack_size}" 
     if max_stack_size == -1 || quantity <= max_stack_size
-       is = ItemStack.new(item_id)
-       is.amount = quantity
-       player.getInventory.addItem(is)
+      is = ItemStack.new(item_id, quantity.to_i, 0, data.to_i)
+      is.amount = quantity
+      player.getInventory.addItem(is)
     else
-       (quantity / max_stack_size).times do |i|
-          is = ItemStack.new(item_id)
-          is.amount = max_stack_size
-          player.getInventory.addItem(is)
-       end 
+      (quantity / max_stack_size).times do |i|
+        is = ItemStack.new(item_id, quantity.to_i, 0, data.to_i)
+        is.amount = max_stack_size
+        player.getInventory.addItem(is)
+      end
     end
   end
-  
+
   def remove_from_inventory(player, item_id, quantity)
-      total_removed = 0
-      player.getInventory.getContents.each do |is|
-        if is && is.getTypeId == item_id && total_removed < quantity
-            durability = is.getDurability()
-            default_durability = is.getType().getMaxDurability()
-            #puts "The durability is #{durability} and the default is #{default_durability}"
-            unless is.getDurability() == 0
-               raise "Can't sell used goods!" if  is.getDurability() < is.getType().getMaxDurability()
-            end
-            while is.getAmount >= 0 && total_removed < quantity
-                if is.getAmount <= 1
-                    player.getInventory.removeItem(is)
-                else    
-            	   # decrement until nothing...
-                   is.setAmount(is.getAmount - 1)
-                   # if there's only 1 item in the item stack, destroy it!
-                end
-                total_removed += 1
-            end
+    total_removed = 0
+    item_id, data = item_id.split(/\,/)
+    player.getInventory.getContents.each do |is|
+      if is && is.getTypeId.to_s == item_id && is.getData.getData.to_s == data  && total_removed < quantity
+        durability = is.getDurability()
+        default_durability = is.getType().getMaxDurability()
+        #puts "The durability is #{durability} and the default is #{default_durability}"
+        unless is.getDurability() == 0
+          raise "Can't sell used goods!" if  is.getDurability() < is.getType().getMaxDurability()
+        end
+        while is.getAmount >= 0 && total_removed < quantity
+          if is.getAmount <= 1
+            player.getInventory.removeItem(is)
+          else
+            # decrement until nothing...
+            is.setAmount(is.getAmount - 1)
+            # if there's only 1 item in the item stack, destroy it!
+          end
+          total_removed += 1
         end
       end
     end
-  
+  end
+
   def send(sender, message)
     fancy_plug = colorize("|c[|YVAXSHOP|c] |w")
     sender.sendMessage(fancy_plug + colorize(message))
   end
-  
+
   def broadcast(message)
     fancy_plug = colorize("|c[|YVAXSHOP|c] |w")
     @SERVER.broadcastMessage(fancy_plug + colorize(message))
   end
-  
-  def colorize(s)
-      map = {
-          '|r' => ChatColor::RED,
-          '|R' => ChatColor::DARK_RED,
-          '|y' => ChatColor::YELLOW,
-          '|Y' => ChatColor::GOLD,
-          '|g' => ChatColor::GREEN,
-          '|G' => ChatColor::DARK_GREEN,
-          '|c' => ChatColor::AQUA,
-          '|C' => ChatColor::DARK_AQUA,
-          '|b' => ChatColor::BLUE,
-          '|B' => ChatColor::DARK_BLUE,
-          '|p' => ChatColor::LIGHT_PURPLE,
-          '|P' => ChatColor::DARK_PURPLE,
-          '|s' => ChatColor::GRAY,
-          '|S' => ChatColor::DARK_GRAY,
-          '|w' => ChatColor::WHITE,
-          '|k' => ChatColor::BLACK,
-      }
-      
-      map.each do|i,v| 
-          s = s.gsub(i, v.to_s)
-      end
 
-      s
+  def colorize(s)
+    map = {
+      '|r' => ChatColor::RED,
+      '|R' => ChatColor::DARK_RED,
+      '|y' => ChatColor::YELLOW,
+      '|Y' => ChatColor::GOLD,
+      '|g' => ChatColor::GREEN,
+      '|G' => ChatColor::DARK_GREEN,
+      '|c' => ChatColor::AQUA,
+      '|C' => ChatColor::DARK_AQUA,
+      '|b' => ChatColor::BLUE,
+      '|B' => ChatColor::DARK_BLUE,
+      '|p' => ChatColor::LIGHT_PURPLE,
+      '|P' => ChatColor::DARK_PURPLE,
+      '|s' => ChatColor::GRAY,
+      '|S' => ChatColor::DARK_GRAY,
+      '|w' => ChatColor::WHITE,
+      '|k' => ChatColor::BLACK,
+    }
+
+    map.each do|i,v|
+      s = s.gsub(i, v.to_s)
+    end
+
+    s
   end
 
   def setup_permissions
@@ -270,27 +286,34 @@ end
 
 module Vax
 
-	class NameLookuper
-		def initialize
-			@id_to_name = Hash.new{|h,k| h[k] = [] }
-			@name_to_id = Hash.new{|h,k| h[k] = [] }
-			CSV.foreach("plugins/VaxShop/items.csv") do |row|
-				name, item_id = row
-				# puts "Name is #{name} is equal to #{item_id}"
-				@id_to_name[item_id.to_i] << name
-				@name_to_id[name] << item_id.to_i
-			end
-		end
-		
-		def name(item_id)
-			return @id_to_name[item_id].first
-		end
-		
-		def item_id(name)
-			return @name_to_id[name.downcase].first
-		end
-	end
-	
+  class NameLookuper
+    def initialize
+      @id_to_name = Hash.new{|h,k| h[k] = [] }
+      @name_to_id = Hash.new{|h,k| h[k] = [] }
+      CSV.foreach("plugins/VaxShop/items.csv") do |row|
+        name, item_id, metadata = row
+        @id_to_name[item_id + "," + metadata] << name
+        @name_to_id[name] << item_id + "," + metadata
+
+      end
+    end
+
+    def name(item_id)
+      result = @id_to_name[item_id].first
+      puts "VAXSHOP Couldn't resolve: #{item_id}" if result == nil
+      if result == nil
+        return "Item #{item_id}"
+      end
+      return result
+    end
+
+    def item_id(name)
+      result = @name_to_id[name.downcase].first
+      puts "VAXSHOP Couldn't resolve: #{name}" if result == nil
+      return result
+    end
+  end
+
   class Stack
     attr_accessor :count
     attr_accessor :item_id
@@ -299,9 +322,9 @@ module Vax
   end
 
   class Shop
-    
+
     PSTORE_FILE = "plugins/VaxShop/VaxShop.pstore"
-    
+
     def initialize
       @STACKS = []
       @PSTORE = PStore.new(PSTORE_FILE)
@@ -311,7 +334,7 @@ module Vax
       verify_options(options, binding)
       # puts "SHOP is adding #{options.inspect}!"
       player = options[:player]
-       
+
       # find an existing stack with the same price and item ID
       stack = find_stack(options)
 
@@ -331,29 +354,29 @@ module Vax
         list << options
         @PSTORE[player] = list
       end
-      
+
       #puts "Shop contents is: #{self.contents.inspect}"
-      
+
     end
-    
+
     def contents
       datas = []
-      @PSTORE.transaction(true) do 
+      @PSTORE.transaction(true) do
         @PSTORE.roots.each do |root|
-	   datas.concat @PSTORE[root]
+          datas.concat @PSTORE[root]
         end
       end
       return datas
     end
 
     def count_items(item_id)
-       count = 0
-       contents.each do |stack|
-          count += stack[:count] if stack[:item_id] == item_id 
-       end
-       return count
+      count = 0
+      contents.each do |stack|
+        count += stack[:count] if stack[:item_id] == item_id
+      end
+      return count
     end
-    
+
     # removes some items from a stack in teh store...
     def remove(options)
       verify_options(options, binding)
@@ -369,52 +392,52 @@ module Vax
       @PSTORE.transaction do
         #puts "Player has this many stacks: #{@PSTORE[options[:player]].length}"
         @PSTORE[options[:player]].each do |stack|
-           #puts "Comparing: #{stack.inspect} with #{options.inspect}"
-           if stack[:price] == options[:price] and stack[:item_id] == options[:item_id] and stack[:player] == options[:player]
-              # puts "Deleting this stack: #{stack.inspect}"
-              found_stack = stack 
-           end
+          #puts "Comparing: #{stack.inspect} with #{options.inspect}"
+          if stack[:price] == options[:price] and stack[:item_id] == options[:item_id] and stack[:player] == options[:player]
+            # puts "Deleting this stack: #{stack.inspect}"
+            found_stack = stack
+          end
         end
         @PSTORE[options[:player]].delete(found_stack)
       end
       @PSTORE.transaction(true) do
-         #puts "Player now has this many after delete: #{@PSTORE[options[:player]].length}"
+        #puts "Player now has this many after delete: #{@PSTORE[options[:player]].length}"
       end
       # finally, add it back in!
       @PSTORE.transaction do
-         found_stack[:count] -= options[:count]
-         if found_stack and found_stack[:count] > 0
-           list = @PSTORE[options[:player]] 
-           list << found_stack
-           @PSTORE[options[:player]] = list
-           # puts "Adding back in #{found_stack.inspect} because the count is greater than 0"
-         else
-           puts "There wasn't enough for me to add the stack back in!"
-         end
+        found_stack[:count] -= options[:count]
+        if found_stack and found_stack[:count] > 0
+          list = @PSTORE[options[:player]]
+          list << found_stack
+          @PSTORE[options[:player]] = list
+          # puts "Adding back in #{found_stack.inspect} because the count is greater than 0"
+        else
+          # puts "There wasn't enough for me to add the stack back in!"
+        end
       end
       @PSTORE.transaction(true) do
         # puts "After readd player has: #{@PSTORE[options[:player]].length}"
       end
     end
-    
+
     def best_price(item_id)
       if best_deal(item_id)
         return best_deal(item_id)[:price]
       end
       return nil
     end
-    
+
     def worst_price(item_id)
-    	    items = contents.select {|stack| stack[:item_id] == item_id}
-    	    # puts items.inspect
-    	    items.sort{|a,b| a[:price] <=> b[:price]}
-    	    return nil if items == nil
-    	    return nil if items.length == 0
-    	    return items[0][:price]
+      items = contents.select {|stack| stack[:item_id] == item_id}
+      # puts items.inspect
+      items.sort{|a,b| a[:price] <=> b[:price]}
+      return nil if items == nil
+      return nil if items.length == 0
+      return items[0][:price]
     end
-    
+
     def has?(item_id)
-      @PSTORE.transaction(true) do 
+      @PSTORE.transaction(true) do
         @PSTORE.roots.each do |root|
           list = @PSTORE[root]
           list.each do |data|
@@ -431,15 +454,15 @@ module Vax
       best_deal_so_far = nil
       best_count = 0
       contents.each do |data|
-        if data[:item_id] == item_id 
+        if data[:item_id] == item_id
           best_price_so_far = data[:price] if best_price_so_far == nil
           best_deal_so_far = data if best_deal_so_far == nil
           # puts "The best deal so far is: #{best_deal_so_far}"
-          if data[:price] < best_price_so_far 
+          if data[:price] < best_price_so_far
             best_price_so_far = data[:price]
             best_deal_so_far = data
             best_count = data[:count]
-          elsif data[:price] == best_price_so_far 
+          elsif data[:price] == best_price_so_far
             # we had a greater count...
             best_count = data[:count]
             best_deal_so_far = data
@@ -448,9 +471,9 @@ module Vax
       end
       return best_deal_so_far
     end
-    
+
     private
-    
+
     def find_stack(options)
       contents.each do |stack|
         if stack[:item_id] == options[:item_id] && stack[:player] == options[:player] && stack[:price] == options[:price]
